@@ -1,0 +1,61 @@
+# The semantic registry. Every population that can be counted is named HERE, once,
+# with an explicit predicate. Nothing else may define a population.
+#
+# The measurement that motivated this: asking "how many psychiatrists?" against the same
+# warehouse returns 51,964 / 41,823 / 22,956 depending on which column you believe, and
+# and narrowing to one manufacturer's payees returns 572 or 2,798 for the same question.
+# All are defensible. None is labelled.
+# A bare reference to `psychiatrists` is therefore an error, not a default.
+
+dialects: [duckdb, clickhouse]
+
+entities:
+  clinician:
+    table: mart_marketing_audience
+    key: npi
+
+cohorts:
+  psychiatrists:
+    entity: clinician
+    ambiguous: true          # bare reference refuses to compile
+    definitions:
+      xcloud:
+        description: Curated segment assignment. Widest; what downstream activation runs on.
+        predicate: "x_cloud_abbrev = 'PSY'"
+        measured: 51964
+      nucc:
+        description: NUCC primary taxonomy text. Broader; what the provider registry says.
+        predicate: "lower(specialty_raw_nucc) like '%psychiatry%'"
+        measured: 41823
+      subspecialty:
+        description: Declared subspecialty only. Narrowest; excludes generalists.
+        predicate: "lower(subspecialty) like '%psychiatry%'"
+        measured: 22956
+
+  kol:
+    entity: clinician
+    definitions:
+      default:
+        description: Tier 1 or Tier 2 by within-subspecialty percentile of industry payments.
+        predicate: "op_intent_tier in ('Tier 1','Tier 2')"
+
+  trial_active:
+    entity: clinician
+    definitions:
+      default:
+        description: Named as a principal investigator on at least one study.
+        predicate: "is_named_investigator"
+
+  untapped_bench:
+    entity: clinician
+    definitions:
+      default:
+        description: KOL-tier industry relationships, never named as a PI.
+        predicate: "op_intent_tier in ('Tier 1','Tier 2') and not is_named_investigator"
+
+measures:
+  count:        "count(*)"
+  clinicians:   "count(distinct npi)"
+  industry_usd: "round(sum(op_total_dollars))"
+  research_usd: "round(sum(research_dollars))"
+  avg_score:    "round(avg(op_score), 1)"
