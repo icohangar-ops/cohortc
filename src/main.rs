@@ -29,7 +29,7 @@ struct Registry {
     dialects: Vec<String>,
     entities: BTreeMap<String, Entity>,
     cohorts: BTreeMap<String, Cohort>,
-    measures: BTreeMap<String, String>,
+    measures: BTreeMap<String, Metric>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,6 +55,20 @@ struct Definition {
     measured: Option<u64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct Metric {
+    #[serde(default)]
+    ambiguous: bool,
+    definitions: BTreeMap<String, MetricDefinition>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MetricDefinition {
+    description: String,
+    expression: String,
+    unit: String,
+}
+
 #[derive(Debug, PartialEq)]
 struct Query {
     cohort: String,
@@ -67,12 +81,32 @@ struct Query {
 
 #[derive(Debug)]
 enum CompileError {
-    UnknownCohort { name: String, known: Vec<String> },
+    UnknownCohort {
+        name: String,
+        known: Vec<String>,
+    },
     /// The whole point of the tool.
-    AmbiguousCohort { name: String, options: Vec<(String, String, Option<u64>)> },
-    UnknownVariant { cohort: String, variant: String, known: Vec<String> },
-    UnknownMeasure { name: String, known: Vec<String> },
-    UnknownDialect { name: String, known: Vec<String> },
+    AmbiguousCohort {
+        name: String,
+        options: Vec<(String, String, Option<u64>)>,
+    },
+    UnknownVariant {
+        cohort: String,
+        variant: String,
+        known: Vec<String>,
+    },
+    UnknownMeasure {
+        name: String,
+        known: Vec<String>,
+    },
+    AmbiguousMeasure {
+        name: String,
+        options: Vec<(String, String, String)>,
+    },
+    UnknownDialect {
+        name: String,
+        known: Vec<String>,
+    },
     Parse(String),
 }
 
@@ -86,7 +120,11 @@ impl std::fmt::Display for CompileError {
             ),
             CompileError::AmbiguousCohort { name, options } => {
                 writeln!(f, "`{name}` is ambiguous and has no default.")?;
-                writeln!(f, "\n  It has {} definitions that return different answers:\n", options.len())?;
+                writeln!(
+                    f,
+                    "\n  It has {} definitions that return different answers:\n",
+                    options.len()
+                )?;
                 for (variant, desc, measured) in options {
                     let n = measured
                         .map(|m| format!("{:>9}", fmt_thousands(m)))
@@ -101,7 +139,11 @@ impl std::fmt::Display for CompileError {
                     options[0].0
                 )
             }
-            CompileError::UnknownVariant { cohort, variant, known } => write!(
+            CompileError::UnknownVariant {
+                cohort,
+                variant,
+                known,
+            } => write!(
                 f,
                 "`{cohort}` has no definition `{variant}`\n  known: {}",
                 known.join(", ")
@@ -111,11 +153,21 @@ impl std::fmt::Display for CompileError {
                 "unknown measure `{name}`\n  known measures: {}",
                 known.join(", ")
             ),
-            CompileError::UnknownDialect { name, known } => write!(
-                f,
-                "unknown dialect `{name}`\n  known: {}",
-                known.join(", ")
-            ),
+            CompileError::AmbiguousMeasure { name, options } => {
+                writeln!(f, "`{name}` is ambiguous and has no default.")?;
+                writeln!(f, "\n  Name one metric definition explicitly:\n")?;
+                for (variant, description, unit) in options {
+                    writeln!(f, "    {name}@{variant} [{unit}]")?;
+                    writeln!(f, "                {description}")?;
+                }
+                write!(
+                    f,
+                    "\n  Refusing to guess: the metric contract requires a named definition."
+                )
+            }
+            CompileError::UnknownDialect { name, known } => {
+                write!(f, "unknown dialect `{name}`\n  known: {}", known.join(", "))
+            }
             CompileError::Parse(m) => write!(f, "parse error: {m}"),
         }
     }
@@ -160,12 +212,16 @@ fn parse(src: &str) -> Result<Query, CompileError> {
                 q.variant = v;
             }
             "and" | "where" => q.filters.push(rest.to_string()),
-            "measure" => q
-                .measures
-                .extend(rest.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty())),
-            "by" => q
-                .group_by
-                .extend(rest.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty())),
+            "measure" => q.measures.extend(
+                rest.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
+            ),
+            "by" => q.group_by.extend(
+                rest.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
+            ),
             "limit" => {
                 q.limit = Some(rest.parse().map_err(|_| {
                     CompileError::Parse(format!("`limit` expects a number, got `{rest}`"))
@@ -173,8 +229,8 @@ fn parse(src: &str) -> Result<Query, CompileError> {
             }
             other => {
                 return Err(CompileError::Parse(format!(
-                    "unexpected keyword `{other}` (expected: cohort, where, and, measure, by, limit)"
-                )))
+                "unexpected keyword `{other}` (expected: cohort, where, and, measure, by, limit)"
+            )))
             }
         }
     }
@@ -194,10 +250,13 @@ fn compile(reg: &Registry, q: &Query, dialect: &str) -> Result<String, CompileEr
             known: reg.dialects.clone(),
         });
     }
-    let cohort = reg.cohorts.get(&q.cohort).ok_or_else(|| CompileError::UnknownCohort {
-        name: q.cohort.clone(),
-        known: reg.cohorts.keys().cloned().collect(),
-    })?;
+    let cohort = reg
+        .cohorts
+        .get(&q.cohort)
+        .ok_or_else(|| CompileError::UnknownCohort {
+            name: q.cohort.clone(),
+            known: reg.cohorts.keys().cloned().collect(),
+        })?;
 
     // The refusal. A cohort marked ambiguous, referenced without a variant, does not compile.
     let variant = match &q.variant {
@@ -210,28 +269,71 @@ fn compile(reg: &Registry, q: &Query, dialect: &str) -> Result<String, CompileEr
                     .map(|(k, d)| (k.clone(), d.description.clone(), d.measured))
                     .collect();
                 options.sort_by(|a, b| b.2.cmp(&a.2));
-                return Err(CompileError::AmbiguousCohort { name: q.cohort.clone(), options });
+                return Err(CompileError::AmbiguousCohort {
+                    name: q.cohort.clone(),
+                    options,
+                });
             }
             "default".to_string()
         }
     };
-    let def = cohort.definitions.get(&variant).ok_or_else(|| CompileError::UnknownVariant {
-        cohort: q.cohort.clone(),
-        variant: variant.clone(),
-        known: cohort.definitions.keys().cloned().collect(),
-    })?;
-    let entity = reg.entities.get(&cohort.entity).ok_or_else(|| CompileError::UnknownCohort {
-        name: cohort.entity.clone(),
-        known: reg.entities.keys().cloned().collect(),
-    })?;
+    let def = cohort
+        .definitions
+        .get(&variant)
+        .ok_or_else(|| CompileError::UnknownVariant {
+            cohort: q.cohort.clone(),
+            variant: variant.clone(),
+            known: cohort.definitions.keys().cloned().collect(),
+        })?;
+    let entity = reg
+        .entities
+        .get(&cohort.entity)
+        .ok_or_else(|| CompileError::UnknownCohort {
+            name: cohort.entity.clone(),
+            known: reg.entities.keys().cloned().collect(),
+        })?;
 
     let mut selects: Vec<String> = q.group_by.clone();
     for m in &q.measures {
-        let expr = reg.measures.get(m).ok_or_else(|| CompileError::UnknownMeasure {
-            name: m.clone(),
-            known: reg.measures.keys().cloned().collect(),
-        })?;
-        selects.push(format!("{expr} as {m}"));
+        let (name, requested_variant) = match m.split_once('@') {
+            Some((name, variant)) => (name, Some(variant)),
+            None => (m.as_str(), None),
+        };
+        let metric = reg
+            .measures
+            .get(name)
+            .ok_or_else(|| CompileError::UnknownMeasure {
+                name: m.clone(),
+                known: reg.measures.keys().cloned().collect(),
+            })?;
+        let variant = match requested_variant {
+            Some(v) => v,
+            None => {
+                if metric.ambiguous || metric.definitions.len() > 1 {
+                    let mut options: Vec<(String, String, String)> = metric
+                        .definitions
+                        .iter()
+                        .map(|(k, d)| (k.clone(), d.description.clone(), d.unit.clone()))
+                        .collect();
+                    options.sort_by(|a, b| a.0.cmp(&b.0));
+                    return Err(CompileError::AmbiguousMeasure {
+                        name: name.into(),
+                        options,
+                    });
+                }
+                "default"
+            }
+        };
+        let definition =
+            metric
+                .definitions
+                .get(variant)
+                .ok_or_else(|| CompileError::UnknownMeasure {
+                    name: m.clone(),
+                    known: reg.measures.keys().cloned().collect(),
+                })?;
+        let alias = m.replace('@', "_");
+        selects.push(format!("{} as {alias}", definition.expression));
     }
 
     let mut preds = vec![def.predicate.clone()];
@@ -343,7 +445,8 @@ mod tests {
     /// Determinism is the product claim, so it is tested rather than asserted.
     #[test]
     fn compilation_is_byte_identical_across_runs() {
-        let src = "cohort psychiatrists@nucc\nwhere state = 'CA'\nmeasure count, industry_usd\nby state";
+        let src =
+            "cohort psychiatrists@nucc\nwhere state = 'CA'\nmeasure count, industry_usd\nby state";
         let r = reg();
         let a = compile(&r, &parse(src).unwrap(), "duckdb").unwrap();
         for _ in 0..50 {
@@ -369,6 +472,26 @@ mod tests {
             }
             other => panic!("expected UnknownMeasure, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn ambiguous_metric_requires_a_named_definition() {
+        let q = parse("cohort kol\nmeasure spend").unwrap();
+        match compile(&reg(), &q, "duckdb").unwrap_err() {
+            CompileError::AmbiguousMeasure { name, options } => {
+                assert_eq!(name, "spend");
+                assert!(options.iter().any(|(variant, _, _)| variant == "cash_paid"));
+                assert!(options.iter().any(|(variant, _, _)| variant == "invoiced"));
+            }
+            other => panic!("expected AmbiguousMeasure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn qualified_procurement_metric_uses_a_stable_alias() {
+        let q = parse("cohort kol\nmeasure gross_margin@revenue_percent").unwrap();
+        let sql = compile(&reg(), &q, "duckdb").unwrap();
+        assert!(sql.contains("as gross_margin_revenue_percent"));
     }
 
     #[test]

@@ -132,6 +132,20 @@ Measures are a **closed vocabulary** — an unknown one is rejected with the val
 silently passed through to the database. Group-by always emits a deterministic `order by`,
 because an unordered result is not reproducible.
 
+### Metric contracts
+
+Measures can also be named metric contracts. A contract records the SQL expression, unit, and
+business definition. Procurement terms with multiple defensible boundaries are intentionally
+ambiguous: `spend`, `landed_cost`, `gross_margin`, `dso`, `dio`, `dpo`, `ccc`, and `value_pool`
+must be qualified, for example `measure spend@cash_paid` or
+`measure gross_margin@revenue_percent`. A bare term is rejected with its available definitions;
+there is no accounting default hidden in the compiler.
+
+The registry includes generic examples for invoice versus cash spend, ex-works versus fully
+loaded landed cost, ending versus average balance working-capital days, and addressable versus
+realizable value pool. Replace the example expressions with the warehouse's approved contract
+before using them for reporting.
+
 ## Using it with an LLM
 
 cohortc does not replace a natural-language interface. It makes one safe to use, by splitting

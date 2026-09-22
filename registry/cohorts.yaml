@@ -54,8 +54,61 @@ cohorts:
         predicate: "op_intent_tier in ('Tier 1','Tier 2') and not is_named_investigator"
 
 measures:
-  count:        "count(*)"
-  clinicians:   "count(distinct npi)"
-  industry_usd: "round(sum(op_total_dollars))"
-  research_usd: "round(sum(research_dollars))"
-  avg_score:    "round(avg(op_score), 1)"
+  count:
+    definitions:
+      default: {description: Row count, expression: "count(*)", unit: rows}
+  clinicians:
+    definitions:
+      default: {description: Distinct clinician count, expression: "count(distinct npi)", unit: clinicians}
+  industry_usd:
+    definitions:
+      default: {description: Total industry payment dollars, expression: "round(sum(op_total_dollars))", unit: USD}
+  research_usd:
+    definitions:
+      default: {description: Total research payment dollars, expression: "round(sum(research_dollars))", unit: USD}
+  avg_score:
+    definitions:
+      default: {description: Average opportunity score, expression: "round(avg(op_score), 1)", unit: score}
+
+  # Procurement terms are intentionally not defaults. Each definition fixes the
+  # accounting boundary, denominator, or cash timing that changes the answer.
+  spend:
+    ambiguous: true
+    definitions:
+      invoiced: {description: Supplier invoice value excluding tax and freight, expression: "round(sum(invoice_subtotal))", unit: USD}
+      cash_paid: {description: Cash paid to suppliers in the period, expression: "round(sum(supplier_payment_amount))", unit: USD}
+  landed_cost:
+    ambiguous: true
+    definitions:
+      ex_works: {description: Purchase price at supplier dock before logistics and duties, expression: "round(sum(purchase_price))", unit: USD}
+      fully_loaded: {description: Purchase price plus freight, insurance, duty, and handling, expression: "round(sum(purchase_price + freight + insurance + duty + handling))", unit: USD}
+  gross_margin:
+    ambiguous: true
+    definitions:
+      revenue_less_landed_cost: {description: Net revenue less fully loaded landed cost, expression: "sum(net_revenue) - sum(landed_cost)", unit: USD}
+      revenue_percent: {description: Gross profit as a percentage of net revenue using fully loaded landed cost, expression: "100 * (sum(net_revenue) - sum(landed_cost)) / nullif(sum(net_revenue), 0)", unit: percent}
+  dso:
+    ambiguous: true
+    definitions:
+      ending_balance: {description: Ending trade receivables divided by trailing daily net revenue, expression: "ending_trade_receivables / nullif(trailing_90d_net_revenue / 90, 0)", unit: days}
+      average_balance: {description: Average trade receivables divided by trailing daily net revenue, expression: "average_trade_receivables / nullif(trailing_90d_net_revenue / 90, 0)", unit: days}
+  dio:
+    ambiguous: true
+    definitions:
+      ending_balance: {description: Ending inventory divided by trailing daily landed cost, expression: "ending_inventory / nullif(trailing_90d_landed_cost / 90, 0)", unit: days}
+      average_balance: {description: Average inventory divided by trailing daily landed cost, expression: "average_inventory / nullif(trailing_90d_landed_cost / 90, 0)", unit: days}
+  dpo:
+    ambiguous: true
+    definitions:
+      ending_balance: {description: Ending trade payables divided by trailing daily landed cost, expression: "ending_trade_payables / nullif(trailing_90d_landed_cost / 90, 0)", unit: days}
+      average_balance: {description: Average trade payables divided by trailing daily landed cost, expression: "average_trade_payables / nullif(trailing_90d_landed_cost / 90, 0)", unit: days}
+  ccc:
+    ambiguous: true
+    definitions:
+      operating: {description: Operating cash conversion cycle as DIO plus DSO minus DPO, expression: "dio_ending_balance + dso_ending_balance - dpo_ending_balance", unit: days}
+      average_balance: {description: Cash conversion cycle using average-balance DIO, DSO, and DPO, expression: "dio_average_balance + dso_average_balance - dpo_average_balance", unit: days}
+  value_pool:
+    ambiguous: true
+    definitions:
+      addressable: {description: Addressable procurement savings pool before execution constraints, expression: "sum(addressable_savings)", unit: USD}
+      realizable: {description: Risk-adjusted savings expected to be realizable in the planning horizon, expression: "sum(realizable_savings)", unit: USD}
