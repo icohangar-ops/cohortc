@@ -188,7 +188,7 @@ claims:
     source: "README.md"
     evidence:
       - type: script
-        ref: "scripts/verify_deps.sh"
+        ref: "scripts/verify_deps_renamed.sh"
         timeout_seconds: 120
       - type: artifact_hash
         ref: "Cargo.lock"
