@@ -1,0 +1,223 @@
+# cohortc evidence matrix — schema v1.
+#
+# Every capability claim stated in this repo's README is bound here to deterministic
+# evidence: a test the CI suite runs, a script this verifier executes (exit 0, hard
+# timeout, no network), a pinned manifest field, or a hashed committed artifact.
+#
+# The matrix stores claims and evidence only — it has no status field. The verifier's
+# output on every run IS the status:
+#
+#     python3 tools/verify_evidence_matrix.py
+#
+# Verifier: tools/verify_evidence_matrix.py, vendored byte-identical (sha256
+# 238e02ab19d59e8b4dc2f6cc5f7ddf099f17a32079b1bc62aa9fcbafbfd297e8) from the canonical
+# kit home icohangar-ops/consensus-hardening-protocol, tools/verify_evidence_matrix.py,
+# vendored-from canonical commit 88067e4 (main), EVIDENCE_MATRIX_VERIFIER_VERSION 1.0.0.
+
+schema_version: 1
+repo: cohortc
+
+claims:
+  - id: C001
+    claim: >-
+      A deterministic cohort compiler: the same input yields byte-identical SQL every
+      run, and determinism is tested rather than asserted.
+    source: "README.md#determinism"
+    evidence:
+      - type: test
+        ref: "cargo-test:compilation_is_byte_identical_across_runs"
+
+  - id: C002
+    claim: >-
+      A bare reference to an ambiguous cohort refuses to compile; the refusal lists
+      every definition with its recorded size instead of guessing.
+    source: "README.md#what-cohortc-does"
+    evidence:
+      - type: test
+        ref: "cargo-test:ambiguous_cohort_refuses_to_compile"
+
+  - id: C003
+    claim: >-
+      A qualified reference compiles to SQL that carries its own provenance: the emitted
+      SQL names the cohort and variant, the definition, the registry-recorded size, and
+      the dialect, so a query pasted into a deck arrives with its definition attached.
+    source: "README.md#what-cohortc-does"
+    evidence:
+      - type: test
+        ref: "cargo-test:qualified_cohort_compiles"
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:cohorts.psychiatrists.definitions.xcloud.measured"
+        equals: 51964
+
+  - id: C004
+    claim: >-
+      One YAML file: every countable population is named in the registry, once, with an
+      explicit predicate. Nothing else may define a population.
+    source: "README.md#the-registry"
+    evidence:
+      - type: script
+        ref: "scripts/verify_registry_discipline.sh"
+        timeout_seconds: 120
+
+  - id: C005
+    claim: >-
+      The registry-recorded sizes are pinned and re-verified on every pull request:
+      xcloud 51964, nucc 41823, subspecialty 22956. Editing a recorded size without
+      updating its evidence fails the build.
+    source: "README.md#the-registry"
+    evidence:
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:cohorts.psychiatrists.definitions.xcloud.measured"
+        equals: 51964
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:cohorts.psychiatrists.definitions.nucc.measured"
+        equals: 41823
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:cohorts.psychiatrists.definitions.subspecialty.measured"
+        equals: 22956
+
+  - id: C006
+    claim: >-
+      Measures are a closed vocabulary: an unknown measure is rejected with the valid
+      list, not silently passed through to the database.
+    source: "README.md#determinism"
+    evidence:
+      - type: test
+        ref: "cargo-test:unknown_measure_is_rejected_with_the_known_list"
+
+  - id: C007
+    claim: >-
+      Group-by always emits a deterministic order by, because an unordered result is
+      not reproducible.
+    source: "README.md#determinism"
+    evidence:
+      - type: test
+        ref: "cargo-test:group_by_emits_deterministic_order_by"
+
+  - id: C008
+    claim: >-
+      Metric contracts: the eight procurement terms (spend, landed_cost, gross_margin,
+      dso, dio, dpo, ccc, value_pool) are intentionally ambiguous in the registry, and a
+      bare term is rejected with its available definitions. There is no accounting
+      default hidden in the compiler.
+    source: "README.md#metric-contracts"
+    evidence:
+      - type: test
+        ref: "cargo-test:ambiguous_metric_requires_a_named_definition"
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.spend.ambiguous"
+        equals: true
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.landed_cost.ambiguous"
+        equals: true
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.gross_margin.ambiguous"
+        equals: true
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.dso.ambiguous"
+        equals: true
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.dio.ambiguous"
+        equals: true
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.dpo.ambiguous"
+        equals: true
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.ccc.ambiguous"
+        equals: true
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.value_pool.ambiguous"
+        equals: true
+
+  - id: C009
+    claim: >-
+      A qualified procurement metric compiles with a stable alias, for example
+      gross_margin@revenue_percent becomes gross_margin_revenue_percent.
+    source: "README.md#metric-contracts"
+    evidence:
+      - type: test
+        ref: "cargo-test:qualified_procurement_metric_uses_a_stable_alias"
+
+  - id: C010
+    claim: >-
+      Dialect support is currently nominal: --dialect is validated against the registry
+      and recorded in the output, and the DuckDB and ClickHouse SQL are byte-identical
+      today. The seam exists; the divergence handling does not.
+    source: "README.md#honest-limitations"
+    evidence:
+      - type: test
+        ref: "cargo-test:dialects_are_validated_against_the_registry"
+      - type: test
+        ref: "cargo-test:duckdb_and_clickhouse_emit_identical_sql_today"
+
+  - id: C011
+    claim: >-
+      The registry includes generic example contracts for invoice versus cash spend,
+      ex-works versus fully loaded landed cost, ending versus average balance
+      working-capital days, and addressable versus realizable value pool.
+    source: "README.md#metric-contracts"
+    evidence:
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.spend.definitions.invoiced.expression"
+        equals: "round(sum(invoice_subtotal))"
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.spend.definitions.cash_paid.expression"
+        equals: "round(sum(supplier_payment_amount))"
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.landed_cost.definitions.ex_works.expression"
+        equals: "round(sum(purchase_price))"
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.landed_cost.definitions.fully_loaded.expression"
+        equals: "round(sum(purchase_price + freight + insurance + duty + handling))"
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.dso.definitions.ending_balance.expression"
+        equals: "ending_trade_receivables / nullif(trailing_90d_net_revenue / 90, 0)"
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.dso.definitions.average_balance.expression"
+        equals: "average_trade_receivables / nullif(trailing_90d_net_revenue / 90, 0)"
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.value_pool.definitions.addressable.expression"
+        equals: "sum(addressable_savings)"
+      - type: manifest_field
+        ref: "registry/cohorts.yaml:measures.value_pool.definitions.realizable.expression"
+        equals: "sum(realizable_savings)"
+
+  - id: C012
+    claim: >-
+      Pure Rust, two dependencies, no LLM.
+    source: "README.md"
+    evidence:
+      - type: script
+        ref: "scripts/verify_deps.sh"
+        timeout_seconds: 120
+      - type: artifact_hash
+        ref: "Cargo.lock"
+        sha256: "018e2e8b9c2fda542b326ce5d21c3af346e42bbc0f90adc62da677a4943262e9"
+
+  - id: C013
+    claim: >-
+      The query language is six keywords: cohort, where, and, measure, by, limit.
+    source: "README.md#what-this-deliberately-is-not"
+    evidence:
+      - type: script
+        ref: "scripts/verify_grammar.sh"
+        timeout_seconds: 120
+
+  - id: C014
+    claim: >-
+      cargo test runs a suite of 10 tests covering the refusal, qualification,
+      determinism, closed-vocabulary, metric-contract, and dialect-validation behavior.
+    source: "README.md#build"
+    evidence:
+      - type: script
+        ref: "scripts/verify_test_count.sh"
+        timeout_seconds: 120
+
+  - id: C015
+    claim: >-
+      A cohort with a single definition compiles without qualification; the refusal
+      applies only where the registry marks the population ambiguous.
+    source: "README.md#the-registry"
+    evidence:
+      - type: test
+        ref: "cargo-test:unqualified_single_definition_cohort_is_fine"
