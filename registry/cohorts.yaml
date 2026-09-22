@@ -81,7 +81,7 @@ measures:
     ambiguous: true
     definitions:
       ex_works: {description: Purchase price at supplier dock before logistics and duties, expression: "round(sum(purchase_price))", unit: USD}
-      fully_loaded: {description: Purchase price plus freight, insurance, duty, and handling, expression: "round(sum(purchase_price + freight + insurance + duty + handling))", unit: USD}
+      fully_loaded: {description: "Purchase price plus freight, insurance, duty, and handling", expression: "round(sum(purchase_price + freight + insurance + duty + handling))", unit: USD}
   gross_margin:
     ambiguous: true
     definitions:
@@ -106,7 +106,7 @@ measures:
     ambiguous: true
     definitions:
       operating: {description: Operating cash conversion cycle as DIO plus DSO minus DPO, expression: "dio_ending_balance + dso_ending_balance - dpo_ending_balance", unit: days}
-      average_balance: {description: Cash conversion cycle using average-balance DIO, DSO, and DPO, expression: "dio_average_balance + dso_average_balance - dpo_average_balance", unit: days}
+      average_balance: {description: "Cash conversion cycle using average-balance DIO, DSO, and DPO", expression: "dio_average_balance + dso_average_balance - dpo_average_balance", unit: days}
   value_pool:
     ambiguous: true
     definitions:

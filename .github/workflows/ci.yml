@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Executes the cargo-test: targets referenced by evidence/matrix.yaml.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Unit tests
+        run: cargo test
+
+  # Fail-closed evidence gate: machine-verifies every capability claim in
+  # evidence/matrix.yaml. Runs before any install step and needs no secrets,
+  # no toolchain, no service containers — an unverified claim cannot look green.
+  evidence-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify evidence matrix
+        run: python3 tools/verify_evidence_matrix.py

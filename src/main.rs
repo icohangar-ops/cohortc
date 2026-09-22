@@ -500,4 +500,33 @@ mod tests {
         assert!(compile(&reg(), &q, "snowflake").is_err());
         assert!(compile(&reg(), &q, "clickhouse").is_ok());
     }
+
+    /// The README promises a deterministic `order by` on every group-by; pin it.
+    #[test]
+    fn group_by_emits_deterministic_order_by() {
+        let q = parse("cohort kol\nmeasure clinicians\nby state").unwrap();
+        let sql = compile(&reg(), &q, "duckdb").unwrap();
+        assert!(sql.contains("group by 1"));
+        assert!(sql.contains("order by 2 desc"));
+    }
+
+    /// Honest limitation, pinned rather than asserted: the dialect is validated and
+    /// recorded in the provenance header, while the SQL itself is byte-identical across
+    /// DuckDB and ClickHouse today. When divergence handling lands, this test fails and
+    /// forces the README limitation to change with it.
+    #[test]
+    fn duckdb_and_clickhouse_emit_identical_sql_today() {
+        let r = reg();
+        let src = "cohort kol\nmeasure count, clinicians\nby state";
+        let duck = compile(&r, &parse(src).unwrap(), "duckdb").unwrap();
+        let click = compile(&r, &parse(src).unwrap(), "clickhouse").unwrap();
+        assert!(duck.contains("-- dialect: duckdb"));
+        assert!(click.contains("-- dialect: clickhouse"));
+        let duck_sql = duck.split("-- dialect: duckdb\n").nth(1).unwrap();
+        let click_sql = click.split("-- dialect: clickhouse\n").nth(1).unwrap();
+        assert_eq!(
+            duck_sql, click_sql,
+            "SQL diverged by dialect; update the README limitation when this lands"
+        );
+    }
 }

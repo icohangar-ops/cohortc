@@ -114,9 +114,12 @@ measures:
   industry_usd: "round(sum(op_total_dollars))"
 ```
 
-`measured` is the size recorded when the definition was written. Re-running the compiled SQL
-and comparing is a one-line CI check — when a definition silently changes meaning, you find
-out from a failing build rather than from a contradiction in a meeting.
+`measured` is the size recorded when the definition was written. Re-running the compiled
+SQL and comparing is a one-line check to run against the warehouse when a definition is
+written or changed; in CI, every recorded size is pinned by `evidence/matrix.yaml` and
+re-verified on every pull request — editing a recorded size without updating its evidence
+fails the build, so a definition that changes meaning surfaces in review rather than as
+unnoticed drift.
 
 ## Determinism
 
@@ -161,7 +164,7 @@ agent that emits raw SQL has buried it.
 
 ```bash
 cargo build --release
-cargo test                              # 6 tests
+cargo test                              # 10 tests
 echo 'cohort kol
       measure clinicians
       by state' | ./target/release/cohortc --dialect clickhouse
@@ -188,6 +191,17 @@ exists; the divergence handling does not.
 **The grammar will run out.** Six keywords covers single-table aggregates. Joins, window
 functions and nested filters are not expressible and are not planned — the point of the tool
 is the registry, not the language.
+
+## Evidence matrix
+
+Every capability claim in this file is backed by `evidence/matrix.yaml` and machine-verified
+on every pull request by `tools/verify_evidence_matrix.py` — a byte-identical, version-stamped
+copy of the canonical verifier vendored from
+[icohangar-ops/consensus-hardening-protocol](https://github.com/icohangar-ops/consensus-hardening-protocol)
+(commit `88067e4`, `EVIDENCE_MATRIX_VERIFIER_VERSION = "1.0.0"`). CI refuses builds while any
+row is unverifiable: zero-evidence rows, duplicate ids, unknown evidence types, unresolvable
+refs, hash or field mismatches, and missing source locators are failures, never warnings.
+There is no skip flag, allowlist, or quiet mode.
 
 ## Licence
 
